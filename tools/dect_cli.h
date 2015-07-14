@@ -35,6 +35,7 @@ struct dect_station
 	uint32_t              count_seen;
 };
 
+/*
 struct sniffed_packet
 {
 	unsigned char rssi;
@@ -42,6 +43,17 @@ struct sniffed_packet
 	unsigned char slot;
 	struct timespec   timestamp;
 	unsigned char data[53];
+};
+*/
+struct sniffed_packet
+{
+   unsigned char     rssi;
+   unsigned char     channel;
+   unsigned char     slot;
+   unsigned char     framenumber;
+   unsigned char     bfok;
+   struct timespec   timestamp;
+   unsigned char     data[53];
 };
 
 

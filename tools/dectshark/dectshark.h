@@ -42,12 +42,13 @@ void printnil(char *,...);
 
 struct sniffed_packet
 {
-	unsigned char rssi;
-	unsigned char channel;
-	unsigned char slot;
-	unsigned char frameflags;
-	struct timespec   timestamp;
-	unsigned char data[53];
+   unsigned char     rssi;
+   unsigned char     channel;
+   unsigned char     slot;
+   unsigned char     framenumber;
+   unsigned char     bfok;
+   struct timespec   timestamp;
+   unsigned char     data[53];
 };
 
 

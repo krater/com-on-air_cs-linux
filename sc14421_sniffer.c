@@ -28,27 +28,8 @@ unsigned char dip_ctrl[] = {0xc2,0x05,0x00,0x03,0x00,0x00};
 
 /* rf register type II card */
 unsigned char radio_II_chan[]  = {0x54,0x80,0x09/* patch */,0xa0,0x00,0x00};
-
 /* rf register type III card */
-/* LMX3161 Single Chip Radio Transceiver, National Semiconductors */
-unsigned char radio_III_chan[] = {0x32, 0x20,0x28, 0x0d,0x41,0x1b};
-/*                           LSB |    |          | 
- *                               |C1=0|   C1=0   |    C1=1
- *                               |C2=1|   C2=0   |    C2=1 (X)
- *                               |R=12| 0x28:A=10| F1  =0 presc 32/33
- *                               |    | 0x20:B=32| F2  =1 VCO pos
- *                               |    |          | F3  =1 high charge pump current
- *                               |    |          | F4  =0 charge pump not TRI-STATE
- *                               |    |          | F6  =0 RX on
- *                               |    |          | F7  =1 TX off
- *                               |    |          | F8  =0 pin 20 low
- *                               |    |          | F9  =0 pin 22 low
- *                               |    |          | F10 =0 pin 23 low
- *                               |    |          | F11-F12: power down SW controlled
- *                               |    |          | F13 =1 high demod out gain
- *                               |    |          | F14-F18: -1.625V DC offset               
- *                           MSB |    |          | 
- */
+unsigned char radio_III_chan[] = {0x32,0x20,0x28,0x01,0xc1,0x1b};
 
 /* dip register */
 unsigned char dip_register[] = {0x15,0xa0,0xff,0x00/* &0x3f */,0x5f,0x04,0x00};
@@ -332,11 +313,11 @@ void sniffer_sniff_scan_irq(struct coa_info *dev, int irq)
 				station[1] = rssi;
 				memcpy(&station[2], &fppacket[6], 5); /* RFPI */
 
-                                ret = kfifo_in_locked(&dev->rx_fifo, station, 7, &dev->rx_fifo_lock);
+				ret = kfifo_put(dev->rx_fifo, station, 7);
 				if (ret <= 0)
 				{
 					printk("com_on_air_cs: rx fifo full? "
-                                                "kfifo_in_locked() = %d\n", ret);
+						"kfifo_put() = %d\n", ret);
 				}
 			}
 		}
@@ -350,7 +331,7 @@ void sniffer_sniff_sync_irq(struct coa_info *dev, int irq)
 	struct sniffed_packet packet;
 	int ret;
 	int slot;
-	int a;
+	int a,i;
 	int memofs;
 
 	SC14421_switch_to_bank(sc14421_base, SC14421_RAMBANK1);
@@ -456,10 +437,10 @@ void sniffer_sniff_sync_irq(struct coa_info *dev, int irq)
 					memcpy(packet.data, fppacket, 53);
 
 					packet.timestamp = dev->irq_timestamp;
-                                        ret = kfifo_in_locked(&dev->rx_fifo,(unsigned char*) &packet,sizeof(struct sniffed_packet), &dev->rx_fifo_lock);
+					ret = kfifo_put(dev->rx_fifo,(unsigned char*) &packet,sizeof(struct sniffed_packet));
 					if (ret <= 0)
 						printk("com_on_air_cs: rx fifo "
-                                                        "full? kfifo_in_locked() "
+							"full? kfifo_put() "
 							"= %d\n", ret);
 				}
 			}
@@ -494,10 +475,9 @@ void sniffer_sniff_sync_irq(struct coa_info *dev, int irq)
 
 					if ( (SC14421_READ(1+memofs) & 0xc0) == 0xc0) /* Checksum ok */
 					{
-						unsigned char bfok = ((SC14421_READ(1+memofs) & 0x03) == 0x03)<<7; /* BField Checksum ok */
-
 						struct sniffed_packet packet;
 						packet.rssi = SC14421_READ(memofs);
+						packet.bfok = ((SC14421_READ(1+memofs) & 0x03) == 0x03);
 						packet.channel = config->slottable[a].channel;
 						packet.slot = a;
 						memcpy(packet.data,fppacket,5);
@@ -524,15 +504,15 @@ void sniffer_sniff_sync_irq(struct coa_info *dev, int irq)
 						/* if (dev->open) */
 						{
 							if(config->framenumber)
-								packet.frameflags = (config->framenumber-1)|bfok;
+								packet.framenumber = config->framenumber-1;
 							else
-								packet.frameflags = 7|bfok;
+								packet.framenumber = 7;
 
 							packet.timestamp = dev->irq_timestamp;
-                                                        ret = kfifo_in_locked(&dev->rx_fifo, (unsigned char*) &packet, sizeof(struct sniffed_packet), &dev->rx_fifo_lock);
+							ret = kfifo_put(dev->rx_fifo, (unsigned char*) &packet, sizeof(struct sniffed_packet));
 							if (ret <= 0)
 							{
-                                                                printk("com_on_air_cs: rx fifo full? kfifo_in_locked() = %d\n", ret);
+								printk("com_on_air_cs: rx fifo full? kfifo_put() = %d\n", ret);
 							}
 						}
 
@@ -594,10 +574,10 @@ void sniffer_sniff_sync_irq(struct coa_info *dev, int irq)
 
 					if ( (SC14421_READ(1+memofs) & 0xc0) == 0xc0)		/* Checksum ok */
 					{
-						unsigned char bfok = ((SC14421_READ(1+memofs) & 0x03) == 0x03)<<7; /* BField Checksum ok */
-
 						struct sniffed_packet packet;
+
 						packet.rssi = SC14421_READ(memofs);
+						packet.bfok = ((SC14421_READ(1+memofs) & 0x03) == 0x03);
 						packet.channel = config->slottable[a].channel;
 						packet.slot = a;
 						memcpy(packet.data, pppacket, 5);
@@ -611,19 +591,18 @@ void sniffer_sniff_sync_irq(struct coa_info *dev, int irq)
 						/* if (dev->open) */
 						{
 							if(config->framenumber)
-								packet.frameflags = (config->framenumber-1)|bfok;
+								packet.framenumber = config->framenumber-1;
 							else
-								packet.frameflags = 7|bfok;
+								packet.framenumber = 7;
 
 							packet.timestamp = dev->irq_timestamp;
-                                                        ret = kfifo_in_locked(
-                                                                &dev->rx_fifo,
+							ret = kfifo_put(
+								dev->rx_fifo,
 								(unsigned char*) &packet,
-                                                                sizeof(struct sniffed_packet),
-                                                                &dev->rx_fifo_lock);
+								sizeof(struct sniffed_packet));
 							if (ret <= 0)
 							{
-                                                                printk("com_on_air_cs: rx fifo full? kfifo_in_locked() = %d\n", ret);
+								printk("com_on_air_cs: rx fifo full? kfifo_put() = %d\n", ret);
 							}
 						}
 

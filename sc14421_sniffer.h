@@ -56,7 +56,8 @@ struct sniffed_packet
 	unsigned char     rssi;
 	unsigned char     channel;
 	unsigned char     slot;
-	unsigned char     frameflags;
+	unsigned char     framenumber;
+	unsigned char     bfok;
 	struct timespec   timestamp;
 	unsigned char     data[53];
 };

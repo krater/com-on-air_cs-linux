@@ -91,7 +91,7 @@ void packetsaver::savepacket(sniffed_packet packet)
 		pcap_packet[15] = packet.channel;
 		pcap_packet[16] = 0x00;
 		pcap_packet[17] = packet.slot;
-		pcap_packet[18] = packet.frameflags&0x0f;
+		//pcap_packet[18] = packet.frameflags&0x0f;
 		pcap_packet[19] = packet.rssi;
 		memcpy(&pcap_packet[20], packet.data, 53);
 		pcap_packet[73] = 0x00;

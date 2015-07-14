@@ -65,10 +65,11 @@ int packetparser::bfieldactive(sniffed_packet packet)
 
 int packetparser::bfieldok(sniffed_packet packet)
 {
-	if(packet.frameflags&0xf0)
+/*	if(packet.frameflags&0xf0)
 		return 1;
 
-	return 0;
+	return 0;*/
+   return packet.bfok;
 }
 
 void packetparser::processrfpi(sniffed_packet packet)
