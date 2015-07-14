@@ -26,6 +26,10 @@
 #include "codec/g72x.h"
 #include "audioDecode.h"
 
+bool imaDumping=0;
+bool wavDumping=1;
+bool 
+
 FILE *fpImaFP, *fpImaPP, *fpWavFP, *fpWavPP;
 
 int pp_slot;
@@ -77,7 +81,7 @@ char openIma(char *filename)
 	{		
 		printf("### Dumping audio in IMA format\n");
 
-		cli.imaDumping = 1;
+		imaDumping = 1;
 		return 0;
 	}
 	else

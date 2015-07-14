@@ -6,7 +6,6 @@
 
 extern char imaDumping;
 extern char wavDumping;
-extern struct cli_info cli;
 
 struct wavHeader
 {

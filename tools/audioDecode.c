@@ -1,5 +1,5 @@
 /*
- * Audio dumping support for the dect_cli tool
+ * Audio dumping and playing support for the dect_cli tool
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,13 +18,22 @@
  *     algorithm when the output is a PCM stream.
  *     Will be soon solved using another library or using A-law compression in the
  *     WAV file.
+ *
  */
 
 
 #include <pcap.h>
+#include <alsa/asoundlib.h>
+#include <pthread.h>
+#include <sched.h>
+#include <semaphore.h>
+
 #include "pcapstein.h"
 #include "codec/g72x.h"
 #include "audioDecode.h"
+
+#define ALSA_PCM_NEW_HW_PARAMS_API	//Use the new ALSA API
+
 
 FILE *fpImaFP, *fpImaPP, *fpWavFP, *fpWavPP;
 
@@ -32,6 +41,22 @@ int pp_slot;
 int fp_slot;
 
 int numSamplesFP, numSamplesPP;
+
+short *audioBuffer;
+unsigned short bp = 0;
+snd_pcm_t *handle;
+snd_pcm_hw_params_t *params;
+snd_pcm_uframes_t frames = 640; 
+unsigned int rate = 8000;
+int dir;
+
+
+
+pthread_t playingThread;
+pthread_attr_t tattr;
+pthread_attr_t tattrMain;
+unsigned int bufferLength;
+sem_t semaphore;
 
 struct g72x_state stateFP, statePP;
 
@@ -60,9 +85,10 @@ struct wavHeader wavHeaderDefault =
 char openIma(char *filename)
 {
 	char tmp[200];
-
+	
 	pp_slot = -1;
 	fp_slot = -1;
+
 	fpImaFP = fpImaPP = NULL;
 
 	// Trying to create the ima files. 
@@ -116,6 +142,9 @@ char openWav(char *filename)
 {
 	char tmp[200];
 
+	pp_slot = -1;
+	fp_slot = -1;
+
 	fpWavFP = fpWavPP = NULL;
 
 	numSamplesFP = numSamplesPP = 0;
@@ -160,6 +189,8 @@ char openWav(char *filename)
 char closeWav()
 {
 	unsigned int chunkSize, chunk2Size;
+
+	
 	
 	// Update the WAV headers with the number of samples
 
@@ -184,10 +215,176 @@ char closeWav()
 	cli.wavDumping = 0;
 
 	printf("### Closing WAV files\n");
-		
 	return 0;
 }
 
+
+/******************************************************************************
+* openAlsa: Open the ALSA device and create a thread                          *
+******************************************************************************/
+
+char openAlsa()
+{
+
+	pp_slot = -1;
+	fp_slot = -1;
+
+	struct sched_param paramMain;
+	struct sched_param paramThread;
+
+	// Open PCM for playback
+	if ( snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0)
+	{	
+		printf("### Error opening the ALSA device\n");
+
+		cli.audioPlay = 0;
+		return 1;
+	}
+	
+	// Allocating the hardware parameters and filling with defaults
+	snd_pcm_hw_params_alloca(&params);
+	snd_pcm_hw_params_any(handle, params);
+	
+	// Configure the hardware 
+	snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED); //Interleaved
+	snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S16_LE); //PCM linear, 16 bits, signed
+	snd_pcm_hw_params_set_channels(handle, params, 1); //Mono
+	snd_pcm_hw_params_set_rate_near(handle, params, &rate, &dir); //8Khz sampling rate	
+	snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir); // period size: 80 frames
+	
+	// Update the new hardware configuration	
+	if (snd_pcm_hw_params(handle, params) < 0)
+	{
+		printf("### Error configuring the ALSA device\n");
+
+  		snd_pcm_close(handle);
+
+		cli.audioPlay = 0;
+		return 1;
+	}
+
+	// Recover the "real" period size and allocate memory for one period
+	snd_pcm_hw_params_get_period_size(params, &frames, &dir);
+	bufferLength = frames * 1000;
+	audioBuffer = (short *) malloc(bufferLength * sizeof(short));
+	bp = 0;
+
+
+	cli.audioPlaying = 1;
+	sem_init(&semaphore, 0, 0);
+
+
+	// Set the scheduler and the priority of the main thread
+	paramMain.sched_priority = 60;
+	if (sched_setscheduler(0,SCHED_RR,&paramMain)!= 0)
+	{
+		printf("### Unable to set the priority\n");
+	}
+
+
+	// Create the playing thread			
+	pthread_attr_init(&tattr);
+  	pthread_attr_setschedpolicy(&tattr, SCHED_RR);
+	paramThread.sched_priority = 60;
+	pthread_attr_setschedparam (&tattr, &paramThread);
+	pthread_create( &playingThread, &tattr, &play, NULL);
+	
+
+	printf("### Opening ALSA device\n");
+
+	return 0;
+}
+
+
+/******************************************************************************
+* closeAlsa: Close the Alsa device and kill the thread                        *
+******************************************************************************/
+
+char closeAlsa()
+{
+	
+	cli.audioPlaying = 0;
+	
+	// Open the semaphore to unlock the thread
+	sem_post(&semaphore);
+
+	// Wait for the thread exit
+	pthread_join(playingThread, NULL);
+	
+	sem_destroy(&semaphore);
+
+  	snd_pcm_drain(handle);
+  	snd_pcm_close(handle);
+  	free(audioBuffer);
+
+	printf("### Closing ALSA device\n");
+
+	return 0;
+
+}
+
+/******************************************************************************
+* queueSample: push a sample in the playback buffer                           *
+******************************************************************************/
+char queueSample(short sample)
+{
+
+	static int p = 0;
+
+	audioBuffer[p] = sample;
+
+	bp++;
+	p++;
+	
+
+	if (bp >= frames)
+	{
+		bp = 0;	
+		sem_post(&semaphore);
+	}
+
+	if (p >= bufferLength)
+	{
+		p = 0;
+	}	
+
+	return 0;	
+}
+
+
+/******************************************************************************
+* play: playback thread                                                       *
+******************************************************************************/
+
+void *play()
+{
+
+	static int p = 0;
+
+	while (cli.audioPlaying)
+	{
+		
+		sem_wait(&semaphore);
+			
+
+		// Play a period.	
+		if (snd_pcm_writei(handle, &(audioBuffer[p]), frames) ==  -EPIPE)
+		{
+			// Underrun!!!
+			snd_pcm_prepare(handle);		
+		}
+		
+		p += frames;
+
+		if (p >= bufferLength)
+		{
+			p = 0;		
+		}
+		
+	}
+
+	return;
+}
 
 /******************************************************************************
 * packetAudioProccessing: process the audio packet                            *
@@ -238,8 +435,7 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 		{
 			if (pp_slot == pcap_packet[0x11])
 			{
-
-				if ((cli.imaDumping) || (cli.wavDumping))
+				if (cli.imaDumping || cli.wavDumping || cli.audioPlaying)
 				{
 					p = &pcap_packet[0x21];
 					
@@ -256,21 +452,36 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 						}
 						
 
-						if (cli.wavDumping)
+						if (cli.wavDumping || cli.audioPlaying)
 						{
 							// Processing the low nibble
 							code = (data & 0x0F);
 							sample = (short) g721_decoder(code, AUDIO_ENCODING_LINEAR, &statePP);
-							fwrite(&sample,sizeof(short),1,fpWavPP);
+		
+							if (cli.audioPlaying && (cli.channelPlaying == 0))
+								queueSample(sample);
+							
+							if (cli.wavDumping)
+								fwrite(&sample,sizeof(short),1,fpWavPP);
+
 							numSamplesPP++;
 							
 							// Processing the high nibble
 							code = (data >> 4);
 							sample = (short) g721_decoder(code, AUDIO_ENCODING_LINEAR, &statePP);
-							fwrite(&sample,sizeof(short),1,fpWavPP);
+
+							if (cli.audioPlaying && (cli.channelPlaying == 0))
+								queueSample(sample);
+
+							if (cli.wavDumping)
+								fwrite(&sample,sizeof(short),1,fpWavPP);
+
 							numSamplesPP++;							
 						}
 					}
+
+
+
 				}
 					
 			}	
@@ -281,10 +492,13 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 		if (fp_slot < 0)
 		{
 			fp_slot = pcap_packet[0x11];
-		}else{
+		}
+		else
+		{
 			if (fp_slot == pcap_packet[0x11])
 			{
-				if ((cli.imaDumping) || (cli.wavDumping))
+
+				if (cli.imaDumping || cli.wavDumping || cli.audioPlaying)
 				{
 					p = &pcap_packet[0x21];
 
@@ -301,22 +515,35 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 						}				
 						
 	
-						if (cli.wavDumping)
+						if (cli.wavDumping || cli.audioPlaying)
 						{
 							// Processing the low nibble
-							code = (data & 0x0F);;
+							code = (data & 0x0F);
 							sample = (short) g721_decoder(code, AUDIO_ENCODING_LINEAR, &stateFP);
-							fwrite(&sample,sizeof(short),1,fpWavFP);
+
+							if (cli.audioPlaying && (cli.channelPlaying == 1))
+								queueSample(sample);
+
+							if (cli.wavDumping)
+								fwrite(&sample,sizeof(short),1,fpWavFP);
+
 							numSamplesFP++;
 														
 							// Processing the high nibble
 							code = (data >> 4);
 							sample = (short) g721_decoder(code, AUDIO_ENCODING_LINEAR, &stateFP);
-							fwrite(&sample,sizeof(short),1,fpWavFP);
+
+							if (cli.audioPlaying && (cli.channelPlaying == 1))
+								queueSample(sample);
+
+							if (cli.wavDumping)
+								fwrite(&sample,sizeof(short),1,fpWavFP);
+
 							numSamplesFP++;
 							
 						}
 					}
+
 				}
 			}	
 		}

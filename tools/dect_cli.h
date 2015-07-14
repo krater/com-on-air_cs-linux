@@ -35,16 +35,6 @@ struct dect_station
 	uint32_t              count_seen;
 };
 
-/*
-struct sniffed_packet
-{
-	unsigned char rssi;
-	unsigned char channel;
-	unsigned char slot;
-	struct timespec   timestamp;
-	unsigned char data[53];
-};
-*/
 struct sniffed_packet
 {
    unsigned char     rssi;
@@ -94,6 +84,9 @@ struct cli_info
 	int                   wavDump;
 	int                   imaDumping;
 	int                   wavDumping;
+	int                   audioPlay;
+	int                   audioPlaying;
+	int                   channelPlaying;
 
 	/* fpscan (async) list of stations */
 	struct dect_station   station;

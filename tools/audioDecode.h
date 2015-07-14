@@ -43,6 +43,15 @@ char openWav(char *filename);
 
 char closeWav();
 
+char openAlsa();
+
+char closeAlsa();
+
+char queueSample(short sample);
+
 char packetAudioProcessing(uint8_t *pcap_packet);
+
+void *play();
+
 
 #endif
