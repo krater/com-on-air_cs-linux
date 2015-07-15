@@ -24,6 +24,7 @@
 #include <pcap.h>
 
 #include "com_on_air_user.h"
+#include "audioDecode.h"
 
 #include "config.h"
 

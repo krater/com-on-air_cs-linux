@@ -27,6 +27,7 @@ public:
 	packetparser();
 	~packetparser();
 
+   void resetinfo();
 	void parsepacket(sniffed_packet packet);
 	
 	slotinfo_str getslotinfo(unsigned int slot);

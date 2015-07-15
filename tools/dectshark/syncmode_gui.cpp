@@ -69,7 +69,7 @@ syncmode_gui::syncmode_gui(int x,int y)
 	mvwprintw(popupwin,1,1,"  Trying to sync to RFPI %.2x%.2x%.2x%.2x%.2x ... ",RFPI[0],RFPI[1],RFPI[2],RFPI[3],RFPI[4]);
 	wnoutrefresh(popupwin);
 
-
+   pparser.resetinfo();
 	doupdate();
 
 	pthread_create(&workthread, NULL, syncthread, (void *)0);
@@ -99,21 +99,28 @@ unsigned int syncmode_gui::keypressed(int key)
 		{
 			case KEY_LEFT:
 				selx=0;
+            //psaver.setChannelPlaying(1);
+            pplayer.setslot(sely+selx*12);
 				break;
 			case KEY_RIGHT:
 				selx=1;
+            //psaver.setChannelPlaying(0);
+            pplayer.setslot(sely+selx*12);
 				break;
 			case KEY_UP:
 				if(sely>0)
 					sely--;
+
+            pplayer.setslot(sely+selx*12);
 				break;
 			case KEY_DOWN:
 				if(sely<11)
 					sely++;
 
-				pplayer.setslot(sely);
+				pplayer.setslot(sely+selx*12);
 				break;
 			case 'b':
+            psaver.closefile();
 				cfg.stop();
 				cfg.setscanmode(SCANMODE_FP);
 				cfg.restart();
@@ -251,7 +258,7 @@ void *syncthread(void *threadid)
 
   	int dev;
 
-        dev = open(DEV, O_RDONLY);
+   dev = open(DEV, O_RDONLY);
 	if (dev<0)
 		printf("couldn't open(\"%s\"): %s\n", DEV, strerror(errno));
 
@@ -299,12 +306,12 @@ void *syncthread(void *threadid)
 
 
 		usleep(100);
-                if(cfg.shouldstop())
-                {
-                        close(dev);
-                        cfg.stopped();
-                        pthread_exit(NULL);
-                }
+      if(cfg.shouldstop())
+      {
+         close(dev);
+         cfg.stopped();
+         pthread_exit(NULL);
+      }
 
 	}
 
@@ -319,7 +326,7 @@ void process_dect_data(int dev)
 	{
 		psaver.savepacket(packet);
 		pparser.parsepacket(packet);
-                pplayer.playpacket(packet);
+      pplayer.playpacket(packet);
 	}
 }
 

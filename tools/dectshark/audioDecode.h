@@ -2,10 +2,6 @@
 #define AUDIODECODE_H
 
 #include <stdint.h>
-#include "dect_cli.h"
-
-extern char imaDumping;
-extern char wavDumping;
 
 struct wavHeader
 {
@@ -28,7 +24,7 @@ struct wavHeader
 	unsigned int subchunk2Size;
 };
 
-
+extern int channelPlaying;
 
 
 
@@ -42,6 +38,15 @@ char openWav(char *filename);
 
 char closeWav();
 
+char openAlsa();
+
+char closeAlsa();
+
+char queueSample(short sample);
+
 char packetAudioProcessing(uint8_t *pcap_packet);
+
+void *play(void *);
+
 
 #endif

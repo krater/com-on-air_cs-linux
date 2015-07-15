@@ -12,22 +12,27 @@
 
 packetparser::packetparser()
 {
-	int i;
-
-	for(i=0;i<24;i++)
-	{
-		syncinfo.slot[i].channel=0;
-		syncinfo.slot[i].afields=0;
-		syncinfo.slot[i].bfields=0;
-		syncinfo.slot[i].berrors=0;
-		syncinfo.slot[i].lastrssi=0;
-	}
+   resetinfo();
 }
 
 packetparser::~packetparser()
 {
 }
 
+void packetparser::resetinfo()
+{
+   int i;
+
+   for(i=0;i<24;i++)
+   {
+      syncinfo.slot[i].channel=0;
+      syncinfo.slot[i].afields=0;
+      syncinfo.slot[i].bfields=0;
+      syncinfo.slot[i].berrors=0;
+      syncinfo.slot[i].lastrssi=0;
+   }
+
+}
 void packetparser::parsepacket(sniffed_packet packet)
 {
 	unsigned int slot=packet.slot;

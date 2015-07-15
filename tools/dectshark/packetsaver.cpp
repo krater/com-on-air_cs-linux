@@ -47,6 +47,9 @@ int packetsaver::openfile(char *fn)
 		return 0;
 	}
 
+   openWav(fn);
+   //openAlsa();
+
 	return 1;
 }
 
@@ -60,7 +63,7 @@ void packetsaver::closefile()
 		pcap   = NULL;
 
       closeWav();
-      closeAlsa();
+      //closeAlsa();
 	}
 }
 
@@ -102,6 +105,6 @@ void packetsaver::savepacket(sniffed_packet packet)
 		pcap_dump((u_char*)pcap_d, &pcap_hdr, pcap_packet);
 
       //TODO: This is the dirty simpl solution, normally we want to select the slot we hear
-      packetAudioProcessing(pcap_packet);
+      //packetAudioProcessing(pcap_packet);
 	}
 }

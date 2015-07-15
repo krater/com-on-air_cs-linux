@@ -28,6 +28,7 @@ public:
 
 	void savepacket(sniffed_packet packet);
 	
+   void setChannelPlaying(int i) {channelPlaying=i;printf("channelplaying:%u",i);}
 protected:
 	char errbuf[PCAP_ERRBUF_SIZE];
 
