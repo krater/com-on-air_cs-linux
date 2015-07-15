@@ -31,6 +31,8 @@ void packetparser::resetinfo()
       syncinfo.slot[i].berrors=0;
       syncinfo.slot[i].lastrssi=0;
    }
+   
+   infostr[0]=0; 
 
 }
 void packetparser::parsepacket(sniffed_packet packet)
@@ -52,6 +54,7 @@ void packetparser::parsepacket(sniffed_packet packet)
 		syncinfo.slot[slot].lastrssi=packet.rssi;
 
 		processrfpi(packet);
+      process_ssi(packet);
 
 	}
 }
@@ -70,10 +73,6 @@ int packetparser::bfieldactive(sniffed_packet packet)
 
 int packetparser::bfieldok(sniffed_packet packet)
 {
-/*	if(packet.frameflags&0xf0)
-		return 1;
-
-	return 0;*/
    return packet.bfok;
 }
 
@@ -86,4 +85,17 @@ void packetparser::processrfpi(sniffed_packet packet)
 	return 0;*/
 }
 
+void packetparser::process_ssi(sniffed_packet packet)
+{
+/*   if ((packet.data[0x17]!=0xe9)||(packet.data[0x18]!=0x8a))
+      return;
+*/
+   if ((packet.data[5] & DECT_A_TA) != DECT_Q_TYPE)
+      return;
 
+   if ((packet.data[6] & 0xf0 ) != 0x30) //fixed part capabilities
+      return;
+
+   unsigned char b9=packet.data[9];
+   sprintf(infostr,"g.726:%i, GAP:%u, DSAA:%u, DSC:%u",((b9&0x80)>>7), ((b9&0x40)>>6), ((b9&0x08)>>3), ((b9&0x04)>>2)); 
+}

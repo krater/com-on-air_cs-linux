@@ -31,22 +31,11 @@ extern int channelPlaying;
 void initWavHeader(struct wavHeader *header);
 
 char openIma(char *filename);
-
 char closeIma();
-
 char openWav(char *filename);
-
 char closeWav();
 
-char openAlsa();
-
-char closeAlsa();
-
-char queueSample(short sample);
-
 char packetAudioProcessing(uint8_t *pcap_packet);
-
-void *play(void *);
 
 
 #endif

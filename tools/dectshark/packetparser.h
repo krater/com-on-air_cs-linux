@@ -31,6 +31,7 @@ public:
 	void parsepacket(sniffed_packet packet);
 	
 	slotinfo_str getslotinfo(unsigned int slot);
+   char *getinfostr()                              {return infostr;}
 
 protected:
 	syncinfo_str syncinfo;
@@ -38,6 +39,9 @@ protected:
 	int bfieldactive(sniffed_packet packet);
 	int bfieldok(sniffed_packet packet);
 	void processrfpi(sniffed_packet packet);
+   void process_ssi(sniffed_packet packet);
+
+   char infostr[256];
 };
 
 

@@ -37,9 +37,6 @@
 
 int imaDumping=0;
 int wavDumping=0;
-int audioPlaying=0;
-
-int channelPlaying=1;
  
 FILE *fpImaFP, *fpImaPP, *fpWavFP, *fpWavPP;
 
@@ -47,22 +44,6 @@ int pp_slot;
 int fp_slot;
 
 int numSamplesFP, numSamplesPP;
-
-short *audioBuffer;
-unsigned short bp = 0;
-snd_pcm_t *handle;
-snd_pcm_hw_params_t *params;
-snd_pcm_uframes_t frames = 640; 
-unsigned int rate = 8000;
-int dir;
-
-
-
-pthread_t playingThread;
-pthread_attr_t tattr;
-pthread_attr_t tattrMain;
-unsigned int bufferLength;
-sem_t semaphore;
 
 struct g72x_state stateFP, statePP;
 
@@ -173,7 +154,7 @@ char openWav(char *filename)
 		fwrite(&wavHeaderDefault,sizeof(wavHeaderDefault),1, fpWavFP);
 		fwrite(&wavHeaderDefault,sizeof(wavHeaderDefault),1, fpWavPP);
 
-		printf("### Dumping audio in WAV format\n");
+		//printf("### Dumping audio in WAV format\n");
 
 		wavDumping = 1;
 		return 0;
@@ -220,178 +201,10 @@ char closeWav()
 
 	wavDumping = 0;
 
-	printf("### Closing WAV files\n");
+	//printf("### Closing WAV files\n");
 	return 0;
 }
 
-
-/******************************************************************************
-* openAlsa: Open the ALSA device and create a thread                          *
-******************************************************************************/
-
-char openAlsa()
-{
-
-	pp_slot = -1;
-	fp_slot = -1;
-
-	struct sched_param paramMain;
-	struct sched_param paramThread;
-
-	// Open PCM for playback
-	if ( snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0)
-	{	
-		printf("### Error opening the ALSA device\n");
-
-		//audioPlay = 0;
-		return 1;
-	}
-	
-	// Allocating the hardware parameters and filling with defaults
-	snd_pcm_hw_params_alloca(&params);
-	snd_pcm_hw_params_any(handle, params);
-	
-	// Configure the hardware 
-	snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED); //Interleaved
-	snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S16_LE); //PCM linear, 16 bits, signed
-	snd_pcm_hw_params_set_channels(handle, params, 1); //Mono
-	snd_pcm_hw_params_set_rate_near(handle, params, &rate, &dir); //8Khz sampling rate	
-	snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir); // period size: 80 frames
-	
-	// Update the new hardware configuration	
-	if (snd_pcm_hw_params(handle, params) < 0)
-	{
-		printf("### Error configuring the ALSA device\n");
-
-  		snd_pcm_close(handle);
-
-		//audioPlay = 0;
-		return 1;
-	}
-
-	// Recover the "real" period size and allocate memory for one period
-	snd_pcm_hw_params_get_period_size(params, &frames, &dir);
-	bufferLength = frames * 1000;
-	audioBuffer = (short *) malloc(bufferLength * sizeof(short));
-	bp = 0;
-
-
-	audioPlaying = 1;
-	sem_init(&semaphore, 0, 0);
-
-
-	// Set the scheduler and the priority of the main thread
-	paramMain.sched_priority = 60;
-	if (sched_setscheduler(0,SCHED_RR,&paramMain)!= 0)
-	{
-		printf("### Unable to set the priority\n");
-	}
-
-
-	// Create the playing thread			
-	pthread_attr_init(&tattr);
-  	pthread_attr_setschedpolicy(&tattr, SCHED_RR);
-	paramThread.sched_priority = 60;
-	pthread_attr_setschedparam (&tattr, &paramThread);
-	pthread_create( &playingThread, &tattr, &play, NULL);
-	
-
-	printf("### Opening ALSA device\n");
-
-	return 0;
-}
-
-
-/******************************************************************************
-* closeAlsa: Close the Alsa device and kill the thread                        *
-******************************************************************************/
-
-char closeAlsa()
-{
-	
-	audioPlaying = 0;
-	
-	// Open the semaphore to unlock the thread
-	sem_post(&semaphore);
-
-	// Wait for the thread exit
-	pthread_join(playingThread, NULL);
-	
-	sem_destroy(&semaphore);
-
-  	snd_pcm_drain(handle);
-  	snd_pcm_close(handle);
-  	free(audioBuffer);
-
-	printf("### Closing ALSA device\n");
-
-	return 0;
-
-}
-
-/******************************************************************************
-* queueSample: push a sample in the playback buffer                           *
-******************************************************************************/
-char queueSample(short sample)
-{
-
-	static int p = 0;
-
-	audioBuffer[p] = sample;
-
-	bp++;
-	p++;
-	
-
-	if (bp >= frames)
-	{
-		bp = 0;	
-		sem_post(&semaphore);
-	}
-
-	if (p >= bufferLength)
-	{
-		p = 0;
-	}	
-
-	return 0;	
-}
-
-
-/******************************************************************************
-* play: playback thread                                                       *
-******************************************************************************/
-
-void *play(void*)
-{
-
-	static int p = 0;
-
-	while (audioPlaying)
-	{
-		
-		sem_wait(&semaphore);
-			
-
-		// Play a period.	
-		if (snd_pcm_writei(handle, &(audioBuffer[p]), frames) ==  -EPIPE)
-		{
-			// Underrun!!!
-			snd_pcm_prepare(handle);		
-         //printf("underun!\n");
-		}
-		
-		p += frames;
-
-		if (p >= bufferLength)
-		{
-			p = 0;		
-		}
-		
-	}
-
-	return 0;
-}
 
 /******************************************************************************
 * packetAudioProccessing: process the audio packet                            *
@@ -404,8 +217,6 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 	unsigned char *p;
 	short sample;
 	int i;
-
-
 
 	// Check if the packet has useful information
 
@@ -442,10 +253,9 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 		{
 			if (pp_slot == pcap_packet[0x11])
 			{
-				if (imaDumping || wavDumping || audioPlaying)
+				if (imaDumping || wavDumping)
 				{
 					p = &pcap_packet[0x21];
-					printf("chn:%u==0\n",channelPlaying);
 
 					// Each packet has 40 useful bytes.
 					for (i = 0; i<40; i++)
@@ -459,16 +269,12 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 							fwrite(&data,sizeof(unsigned char),1,fpImaPP);
 						}
 						
-
-						if (wavDumping || audioPlaying)
+						if (wavDumping)
 						{
 							// Processing the low nibble
 							code = (data & 0x0F);
 							sample = (short) g721_decoder(code, AUDIO_ENCODING_LINEAR, &statePP);
 		
-							if (audioPlaying && (channelPlaying == 0))
-								queueSample(sample);
-							
 							if (wavDumping)
 								fwrite(&sample,sizeof(short),1,fpWavPP);
 
@@ -478,17 +284,12 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 							code = (data >> 4);
 							sample = (short) g721_decoder(code, AUDIO_ENCODING_LINEAR, &statePP);
 
-							if (audioPlaying && (channelPlaying == 0))
-								queueSample(sample);
-
 							if (wavDumping)
 								fwrite(&sample,sizeof(short),1,fpWavPP);
 
 							numSamplesPP++;							
 						}
 					}
-
-
 
 				}
 					
@@ -506,10 +307,9 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 			if (fp_slot == pcap_packet[0x11])
 			{
 
-				if (imaDumping || wavDumping || audioPlaying)
+				if (imaDumping || wavDumping)
 				{
 					p = &pcap_packet[0x21];
-               printf("chn:%u==1\n",channelPlaying);
 
 					// Each packet has 40 useful bytes.
 					for (i = 0; i<40; i++)
@@ -523,15 +323,11 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 							fwrite(&data,sizeof(unsigned char),1,fpImaFP);
 						}				
 						
-	
-						if (wavDumping || audioPlaying)
+						if (wavDumping)
 						{
 							// Processing the low nibble
 							code = (data & 0x0F);
 							sample = (short) g721_decoder(code, AUDIO_ENCODING_LINEAR, &stateFP);
-
-							if (audioPlaying && (channelPlaying == 1))
-								queueSample(sample);
 
 							if (wavDumping)
 								fwrite(&sample,sizeof(short),1,fpWavFP);
@@ -542,9 +338,6 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 							code = (data >> 4);
 							sample = (short) g721_decoder(code, AUDIO_ENCODING_LINEAR, &stateFP);
 
-							if (audioPlaying && (channelPlaying == 1))
-								queueSample(sample);
-
 							if (wavDumping)
 								fwrite(&sample,sizeof(short),1,fpWavFP);
 
@@ -552,7 +345,6 @@ char packetAudioProcessing(uint8_t *pcap_packet)
 							
 						}
 					}
-
 				}
 			}	
 		}

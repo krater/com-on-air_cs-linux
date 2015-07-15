@@ -93,18 +93,24 @@ WINDOW *syncmode_gui::getmainwin()
 
 unsigned int syncmode_gui::keypressed(int key)
 {
-	if(cfg.getsync()==SYNC_SYNCED)
+   if(key=='b')
+   {
+        psaver.closefile();
+        cfg.stop();
+        cfg.setscanmode(SCANMODE_FP);
+        cfg.restart();
+        return 0;
+   }
+   else if(cfg.getsync()==SYNC_SYNCED)
 	{
 		switch(key)
 		{
 			case KEY_LEFT:
 				selx=0;
-            //psaver.setChannelPlaying(1);
             pplayer.setslot(sely+selx*12);
 				break;
 			case KEY_RIGHT:
 				selx=1;
-            //psaver.setChannelPlaying(0);
             pplayer.setslot(sely+selx*12);
 				break;
 			case KEY_UP:
@@ -119,13 +125,13 @@ unsigned int syncmode_gui::keypressed(int key)
 
 				pplayer.setslot(sely+selx*12);
 				break;
-			case 'b':
+/*			case 'b':
             psaver.closefile();
 				cfg.stop();
 				cfg.setscanmode(SCANMODE_FP);
 				cfg.restart();
 				return 0;
-				break;
+				break;*/
 			default:
 				return key;
 		}
@@ -225,6 +231,10 @@ void syncmode_gui::printfounds()
 	}
 
 	wrefresh(mainwin);
+
+   wattron(mainwin,COLOR_PAIR(2));
+   mvwprintw(msgwin, 1,1,"%s",pparser.getinfostr());
+   wrefresh(msgwin);
 }
 
 

@@ -293,7 +293,7 @@ void *scanthread(void *threadid)
 
 		channeltime++;
 	
-		if(channeltime == 5)
+		if(channeltime == 8)
 		{
 			if(cfg.hop())
 			{
